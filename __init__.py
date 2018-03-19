@@ -1,10 +1,14 @@
 from flask import Flask, render_template, request, jsonify
+import sendmail
+
+
+
 application = Flask(__name__)
 
 
 @application.route("/")
 def index():
-    return "index"
+	return render_template('index.html')
 
 @application.route("/adduser", methods=['POST'])
 def adduser():
@@ -31,5 +35,5 @@ def item():
 	return jsonify({'status': 'OK'})
 
 
-if __name__ == "__main__":
+if __name__ ==     "__main__":
     application.run(host='0.0.0.0', port = 80)
