@@ -105,6 +105,8 @@ def item(id):
     return jsonify({'status': 'OK', 'item':{'id':item['item_id'],'username':item['username'],'property':item['property'],'retweeted':item['retweeted'],'content':item['content'],'timestamp':item['timestamp']}})
 @application.route("/search", methods=['POST'])
 def search():
+    if session.get('username') is None:
+        return jsonify({'status': 'error', 'error':'User not logged in.'})
     req=request.get_json()
     if req.get('timestamp') is None:
         ts=time.time() #default is current time
@@ -118,19 +120,129 @@ def search():
             l=100 # max limit is 100
         elif l < 0:
             return jsonify({'status':'error','error':'Please input a valid limit 0<limit<100'})
+    if req.get('q') is None:
+        query=''
+    else:
+        query= req['q']
+    if req.get('username') is None:
+        u=''
+    else:
+        u=req['username']
+    if req.get('following')is None:
+        f=req['following']
+    else:
+        f=true
+    if u and f : # username not empty and following is true
+        isfollowing = db.following.find_one({'user':session.get('username'),'follows':u})
+        if isfollowing is None:
+            return jsonify({'status':'OK','items':[]}) # if not following, dont return anything
+        else: # return tweets by this user as usual
+            chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u}}).limit(l) # limits amount pulled by l (L NOT 1)
+            out= {'status':'OK'}
+            items=[]
+            for chirp in chirps:
+                c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp']}
+                items.append(c)
+            out['items']=items
+            return jsonify(out)
+    elif f: # following is true but username is not
+        isfollowing = db.following.find({'user':session.get('username')})
+        flist=[]
+        for follow in isfollowing:
+            flist.append(follow['follows'])
+        chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query}})
+        counter=0
+        items=[]
+        for chirp in chirps:  
+            if chirp['username'] in flist:
+                c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp']}
+                items.append(c)
+                counter +=1
+                if counter >= l:
+                    break # if counter is at or over limit, end loop
+        out={'status':'OK'}
+        out['items']=items
+        return jsonify(out)
+    elif u: # username is true but following is not
+        chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u}}).limit(l) # limits amount pulled by l (L NOT 1)
+        out= {'status':'OK'}
+        items=[]
+        for chirp in chirps:
+            c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp']}
+            items.append(c)
+        out['items']=items
+
+        return jsonify(out)
+    else: # neither username nor following is true
+        chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query}}).limit(l) # limits amount pulled by l (L NOT 1)
+        out= {'status':'OK'}
+        items=[]
+        for chirp in chirps:
+            c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp']}
+            items.append(c)
+        out['items']=items
+
+        return jsonify(out)
+
+@application.route("/item/<id>", methods=['DELETE'])
+def delitem(id):
+    #i dont think we have to return anything
+    db.items.remove({"item_id":int(float(id))}, true)
+@application.route("/user/<username>", methods=['GET'])
+def profile(username):
+    acc=db.accounts.find_one({'username':username},{'email':1})
+    following = db.following.find({'user':username}).count
+    followers = db.following.find({'follows':username}).count
+    e= acc['email']
+    return jsonify({'status': 'OK', 'user': {'email':e,'followers':followers,'following':following}})  
+@application.route("/user/<username>/followers", methods=['GET'])
+def followers(username):
+    l=request.args.get('limit')
+    if l is None:
+        l=50
+    elif l >200:
+        l=200
+    elif l < 0:
+            return jsonify({'status':'error','error':'Please input a valid limit 0<limit<200'})
+  
+    followers = db.following.find({'follows':username},{'user':1}).limit(l)
+    fs=[]
+    for follower in followers:
+        fs.append(follower['user'])
+    return jsonify({'status': 'OK', 'users':fs})  
+@application.route("/user/<username>/following", methods=['GET'])
+def following(username):
+    l=request.args.get('limit')
+    if l is None:
+        l=50
+    elif l >200:
+        l=200
+    elif l < 0:
+            return jsonify({'status':'error','error':'Please input a valid limit 0<limit<200'})
+  
+    following = db.following.find({'user':username},{'follows':1}).limit(l)
+    fs=[]
+    for follow in following:
+        fs.append(following['user'])
+    return jsonify({'status': 'OK', 'users':fs})       
+@application.route("/follow", methods=['POST'])
+def follow():
+    req=request.get_json()
+    if session.get('username') is None:
+        return jsonify({'status': 'error', 'error':'User not logged in.'})
+    else:
+        follow=req['username']
+        if req.get('follow') is None:
+            f=true
+        else:
+            f=req['follow']
+        
+        if f:
+            new={'user': session.get('username'), 'follows':follow}
+            db.following.insert(new)
+        else:
+            db.following.remove({'user':session.get('username'),'follows':follow}, true)
+    return jsonify({'status': 'OK'})  
    
-    chirps=db.items.find({"timestamp":{ '$lte':ts}}).limit(l) # limits amount pulled by l (L NOT 1)
-    out= {'status':'OK'}
-    items=[]
-    for chirp in chirps:
-        c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp']}
-        items.append(c)
-    out['items']=items
-    out['timestamp']=ts
-    out['limit']=l
-
-    return jsonify(out)
-
-    
 if __name__ ==     "__main__":
     application.run(host='0.0.0.0', port = 80)
