@@ -105,6 +105,7 @@ def item(id):
     return jsonify({'status': 'OK', 'item':{'id':item['item_id'],'username':item['username'],'property':item['property'],'retweeted':item['retweeted'],'content':item['content'],'timestamp':item['timestamp']}})
 @application.route("/search", methods=['POST'])
 def search():
+    out= {'status':'OK'}
     if session.get('username') is None:
         return jsonify({'status': 'error', 'error':'User not logged in.'})
     req=request.get_json()
@@ -120,6 +121,7 @@ def search():
             l=100 # max limit is 100
         elif l < 0:
             return jsonify({'status':'error','error':'Please input a valid limit 0<limit<100'})
+    
     if req.get('q') is None:
         query=''
     else:
@@ -129,16 +131,29 @@ def search():
     else:
         u=req['username']
     if req.get('following')is None:
-        f=req['following']
+        f=True
     else:
-        f=true
+        out['afollowing']=str(req['following'])
+     
+        if str(req['following']) =="True":
+            f=True
+        else:
+            f=False
+       
+    
+    out['user']= session.get('username')
+    out['timestamp']=ts
+    out['limit']=l
+    out['query']=query
+    out['username']=u
+    out['following']=f
     if u and f : # username not empty and following is true
         isfollowing = db.following.find_one({'user':session.get('username'),'follows':u})
         if isfollowing is None:
             return jsonify({'status':'OK','items':[]}) # if not following, dont return anything
         else: # return tweets by this user as usual
             chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u}}).limit(l) # limits amount pulled by l (L NOT 1)
-            out= {'status':'OK'}
+            
             items=[]
             for chirp in chirps:
                 c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp']}
@@ -160,12 +175,12 @@ def search():
                 counter +=1
                 if counter >= l:
                     break # if counter is at or over limit, end loop
-        out={'status':'OK'}
+       
         out['items']=items
         return jsonify(out)
     elif u: # username is true but following is not
         chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u}}).limit(l) # limits amount pulled by l (L NOT 1)
-        out= {'status':'OK'}
+
         items=[]
         for chirp in chirps:
             c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp']}
@@ -175,7 +190,7 @@ def search():
         return jsonify(out)
     else: # neither username nor following is true
         chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query}}).limit(l) # limits amount pulled by l (L NOT 1)
-        out= {'status':'OK'}
+
         items=[]
         for chirp in chirps:
             c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp']}
@@ -233,7 +248,7 @@ def follow():
     else:
         follow=req['username']
         if req.get('follow') is None:
-            f=true
+            f=True
         else:
             f=req['follow']
         
@@ -245,4 +260,4 @@ def follow():
     return jsonify({'status': 'OK'})  
    
 if __name__ ==     "__main__":
-    application.run(host='0.0.0.0', port = 80)
+    application.run(host='0.0.0.0', port = 80, threaded=True)

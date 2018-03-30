@@ -10,7 +10,7 @@ Milestone One: [COMPLETED 3/20]
  /item/<id> GET
  /search
  ----------------
- Milestone Two:
+ Milestone Two: [COMPLETED 3/30]
  /item/<id> DELETE
  /search v.2
  /user/<username> GET
