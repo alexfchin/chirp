@@ -81,15 +81,19 @@ def additem():
         return jsonify({'status': 'error', 'error':'User not logged in.'})
     else:
         con=req['content']
-        db.counter.update_one({"item_id":"itemid"},{'$inc':{"seq":1}})#update counter
-        counter= db.counter.find_one({"item_id":"itemid"},{"seq":1})# get current id counter
+       
+        if req.get('media') is None:
+            mid=[]
+        else:
+            mid=req['media']  #should be array of ids already
+   
         if req.get('childType') is None:
-            new= {"item_id":counter['seq'],"timestamp":time.time(), "username":session['username'], "content":con, "retweeted":0, "property":{"likes":0}}
+            new= {"item_id":counter['seq'],"timestamp":time.time(), "username":session['username'], "content":con, "retweeted":0, "property":{"likes":0}, "media":mid}
         else:
             ct=req['childType'] #if child: retweet or reply, if not child: null
             if req.get('parent') is not None: # parent optional
                 p=req['parent'] # item id of the original item being responded to
-                new= {"item_id":counter['seq'],"timestamp":time.time(), "username":session['username'], "content":con, "childType":ct,"retweeted":0, "property":{"likes":0},"parent":p}
+                new= {"item_id":counter['seq'],"timestamp":time.time(), "username":session['username'], "content":con, "childType":ct,"retweeted":0, "property":{"likes":0},"parent":p,"media":mid}
                 if ct == "retweet": #increase parent retweet counter if retweeted
                     db.items.update_one({"item_id":p},{'$inc': {"retweeted":1}})# increment retweet count of parent by one         
     db.items.insert(new)
@@ -102,7 +106,7 @@ def item(id):
     item= db.items.find_one({"item_id":int(float(id))}) #lmao
     if item is None:
         return jsonify({'status': 'error', 'error':'Chirp not found'})
-    return jsonify({'status': 'OK', 'item':{'id':item['item_id'],'username':item['username'],'property':item['property'],'retweeted':item['retweeted'],'content':item['content'],'timestamp':item['timestamp']}})
+    return jsonify({'status': 'OK', 'item':{'id':item['item_id'],'username':item['username'],'property':item['property'],'retweeted':item['retweeted'],'content':item['content'],'timestamp':item['timestamp'], 'childType': item['childtype'], 'parent':item['parent'],'media':item['media']}})
 @application.route("/search", methods=['POST'])
 def search():
     out= {'status':'OK'}
@@ -135,11 +139,26 @@ def search():
     else:
         out['afollowing']=str(req['following'])
      
-        if str(req['following']) =="True":
+        if req['following']:
             f=True
         else:
             f=False
-       
+    if req.get('rank') is None:
+        r="interest"
+    else:
+        r=req['rank']
+    if req.get('parent') is None:
+        p=None
+    else:
+        p=req['parent']
+    if req.get('replies') is None:
+        re= True
+    else:
+        re= req['replies']
+    if req.get('hasMedia') is None:
+        m=False
+    else:
+        m=req['media']
     
     out['user']= session.get('username')
     out['timestamp']=ts
@@ -156,7 +175,8 @@ def search():
             
             items=[]
             for chirp in chirps:
-                c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp']}
+                c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp'],'childType': item['childtype'], 'parent':item['parent'],'media':item['media']}})
+
                 items.append(c)
             out['items']=items
             return jsonify(out)
@@ -170,7 +190,8 @@ def search():
         items=[]
         for chirp in chirps:  
             if chirp['username'] in flist:
-                c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp']}
+                c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp'], 'childType': item['childtype'], 'parent':item['parent'],'media':item['media']}})
+
                 items.append(c)
                 counter +=1
                 if counter >= l:
@@ -183,7 +204,8 @@ def search():
 
         items=[]
         for chirp in chirps:
-            c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp']}
+            c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp'], 'childType': item['childtype'], 'parent':item['parent'],'media':item['media']}})
+
             items.append(c)
         out['items']=items
 
@@ -202,6 +224,10 @@ def search():
 @application.route("/item/<id>", methods=['DELETE'])
 def delitem(id):
     #i dont think we have to return anything
+    item= db.items.find({"item_id":id})
+    media=item['media']
+    for m in media:
+        db.media.remove({"mediaid":m},true)
     db.items.remove({"item_id":int(float(id))}, true)
 @application.route("/user/<username>", methods=['GET'])
 def profile(username):
@@ -258,6 +284,42 @@ def follow():
         else:
             db.following.remove({'user':session.get('username'),'follows':follow}, true)
     return jsonify({'status': 'OK'})  
-   
+@application.route("/item/<id>/like", methods=['POST'])
+def likeitem(id):  # I HOPE WE DONT HAVE TO RETURN WHAT THE USER LIKES/ WHO LIKES AN ITEM ....
+    req=request.get_json()
+    if session.get('username') is None:
+        return jsonify({'status': 'error', 'error':'User not logged in.'})
+    else:
+        item=req['id']
+        if req.get('like') is None:
+            f=True
+        else:
+            f=req['like']
+        
+        if f:
+            db.item.update({"itemid":id},{'$inc'{"property":{"likes":1}})
+            db.likes.insert({"user":session.get('username'),"itemid":counter})
+        else:
+           db.item.update({"itemid":id},{'$dec'{"property":{"likes":1}})
+           db.likes.remove({"user":session.get('username'),"itemid":counter},true)
+    return jsonify({'status': 'OK'})  
+@application.route("/addmedia", methods=['POST'])
+def addmedia(): #says remove media if it is not accosiated with an item by a certain time????
+    file = request.files['content']
+    fn= secure_filename(file.filename)
+    mimetype = file.content_type
+    #fn=request.form.get('filename')
+    db.counter.update_one({"item_id":"mediaid"},{'$inc':{"seq":1}})#update counter
+    counter= db.counter.find_one({"item_id":"mediaid"},{"seq":1})# get current id counter
+    
+    db.media.insert({"filename":fn , "content": file, "mediaid":counter, "type": mimetype})
+    return jsonify({"status":"OK","id":counter})
+ 
+@application.route("/media/<id>"), methods=['GET'])
+def getmedia(id):
+    media=db.media.find({"mediaid":id},{"filename"1,"content":1,"type:1})
+    return media['content'],{'Content-Type': media['type']})
+    
+       
 if __name__ ==     "__main__":
     application.run(host='0.0.0.0', port = 80, threaded=True)
