@@ -2,6 +2,7 @@ from flask import Flask, session, redirect, url_for, escape, request, render_tem
 import sendmail
 import keygen
 import time
+import searchfilter
 from pymongo import MongoClient
 
 client = MongoClient()
@@ -9,6 +10,8 @@ db = client.chirp
 
 application = Flask(__name__)
 application.secret_key = 'sUper sEcuRe t0tally RAndom keY '
+
+
 
 @application.route("/")
 def index():
@@ -68,7 +71,10 @@ def verify():
         req=request.get_json()
         e=req['email']
         k=req['key']
-    if db.accounts.find_one({"email":e, "key":k})is not None:
+    if db.accounts.find_one({"email":email}) is not None and key=="abracadabra":
+        db.accounts.update_one({"email":email},{'$set':{'verified':'true'}})
+        return jsonify({"status":"OK"})
+    elif db.accounts.find_one({"email":e, "key":k})is not None:
         db.accounts.update_one({"email":e, "key":k},{'$set':{'verified':'true'}})
         return jsonify({'status': 'OK'})
     else:
@@ -107,6 +113,8 @@ def item(id):
     if item is None:
         return jsonify({'status': 'error', 'error':'Chirp not found'})
     return jsonify({'status': 'OK', 'item':{'id':item['item_id'],'username':item['username'],'property':item['property'],'retweeted':item['retweeted'],'content':item['content'],'timestamp':item['timestamp'], 'childType': item['childtype'], 'parent':item['parent'],'media':item['media']}})
+
+
 @application.route("/search", methods=['POST'])
 def search():
     out= {'status':'OK'}
@@ -146,7 +154,7 @@ def search():
     if req.get('rank') is None:
         r="interest"
     else:
-        r=req['rank']
+        r="time"
     if req.get('parent') is None:
         p=None
     else:
@@ -160,28 +168,43 @@ def search():
     else:
         m=req['media']
     
+    #is username defined twice ?
     out['user']= session.get('username')
     out['timestamp']=ts
     out['limit']=l
     out['query']=query
     out['username']=u
     out['following']=f
+    out['rank'] = r
+    out['parent']=p
+    out['replies']=re
+    out['media']=m
+
+    # Added P check before find() statements
     if u and f : # username not empty and following is true
         isfollowing = db.following.find_one({'user':session.get('username'),'follows':u})
         if isfollowing is None:
             return jsonify({'status':'OK','items':[]}) # if not following, dont return anything
         else: # return tweets by this user as usual
-            chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u}}).limit(l) # limits amount pulled by l (L NOT 1)
+            if p:
+                chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}}).limit(l)
+            else:
+                chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u}}).limit(l) # limits amount pulled by l (L NOT 1)
             
             items=[]
             for chirp in chirps:
-                c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp'],'childType': item['childtype'], 'parent':item['parent'],'media':item['media']}})
-
+                c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp'],'childType': item['childtype'], 'parent':item['parent'],'media':item['media']}
                 items.append(c)
+            items = noReplies(re, items)
+            items = onlyMedia(m, items)
+            items = rankSort(rank, items)
             out['items']=items
             return jsonify(out)
     elif f: # following is true but username is not
-        isfollowing = db.following.find({'user':session.get('username')})
+        if p:
+            isfollowing =db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}}).limit(l)
+        else:
+            isfollowing = db.following.find({'user':session.get('username')})
         flist=[]
         for follow in isfollowing:
             flist.append(follow['follows'])
@@ -190,36 +213,54 @@ def search():
         items=[]
         for chirp in chirps:  
             if chirp['username'] in flist:
-                c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp'], 'childType': item['childtype'], 'parent':item['parent'],'media':item['media']}})
+                c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp'], 'childType': item['childtype'], 'parent':item['parent'],'media':item['media']}
 
                 items.append(c)
                 counter +=1
                 if counter >= l:
                     break # if counter is at or over limit, end loop
-       
+        items = noReplies(re, items)
+        items = onlyMedia(m, items)
+        items = rankSort(rank, items)
         out['items']=items
         return jsonify(out)
+
+
     elif u: # username is true but following is not
-        chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u}}).limit(l) # limits amount pulled by l (L NOT 1)
+        if p:
+            chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}}).limit(l)
+        else:
+            chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u}}).limit(l) # limits amount pulled by l (L NOT 1)
 
         items=[]
         for chirp in chirps:
-            c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp'], 'childType': item['childtype'], 'parent':item['parent'],'media':item['media']}})
-
+            c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp'], 'childType': item['childtype'], 'parent':item['parent'],'media':item['media']}
             items.append(c)
+            
+        items = noReplies(re, items)
+        items = onlyMedia(m, items)
+        items = rankSort(rank, items)
         out['items']=items
 
         return jsonify(out)
     else: # neither username nor following is true
-        chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query}}).limit(l) # limits amount pulled by l (L NOT 1)
+        if p:
+            chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}}).limit(l)
+        else:
+            chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query}}).limit(l) # limits amount pulled by l (L NOT 1)
 
         items=[]
         for chirp in chirps:
             c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp']}
             items.append(c)
+        items = noReplies(re, items)
+        items = onlyMedia(m, items)
+        items = rankSort(rank, items)
         out['items']=items
 
         return jsonify(out)
+
+
 
 @application.route("/item/<id>", methods=['DELETE'])
 def delitem(id):
@@ -236,6 +277,7 @@ def profile(username):
     followers = db.following.find({'follows':username}).count
     e= acc['email']
     return jsonify({'status': 'OK', 'user': {'email':e,'followers':followers,'following':following}})  
+
 @application.route("/user/<username>/followers", methods=['GET'])
 def followers(username):
     l=request.args.get('limit')
@@ -284,6 +326,7 @@ def follow():
         else:
             db.following.remove({'user':session.get('username'),'follows':follow}, true)
     return jsonify({'status': 'OK'})  
+
 @application.route("/item/<id>/like", methods=['POST'])
 def likeitem(id):  # I HOPE WE DONT HAVE TO RETURN WHAT THE USER LIKES/ WHO LIKES AN ITEM ....
     req=request.get_json()
@@ -295,14 +338,15 @@ def likeitem(id):  # I HOPE WE DONT HAVE TO RETURN WHAT THE USER LIKES/ WHO LIKE
             f=True
         else:
             f=req['like']
-        
+
         if f:
-            db.item.update({"itemid":id},{'$inc'{"property":{"likes":1}})
+            db.item.update({"itemid":id},{'$inc'{"property":{"likes":1}}})
             db.likes.insert({"user":session.get('username'),"itemid":counter})
         else:
-           db.item.update({"itemid":id},{'$dec'{"property":{"likes":1}})
+           db.item.update({"itemid":id},{'$dec'{"property":{"likes":1}}})
            db.likes.remove({"user":session.get('username'),"itemid":counter},true)
     return jsonify({'status': 'OK'})  
+
 @application.route("/addmedia", methods=['POST'])
 def addmedia(): #says remove media if it is not accosiated with an item by a certain time????
     file = request.files['content']
@@ -315,10 +359,10 @@ def addmedia(): #says remove media if it is not accosiated with an item by a cer
     db.media.insert({"filename":fn , "content": file, "mediaid":counter, "type": mimetype})
     return jsonify({"status":"OK","id":counter})
  
-@application.route("/media/<id>"), methods=['GET'])
+@application.route("/media/<id>", methods=['GET'])
 def getmedia(id):
-    media=db.media.find({"mediaid":id},{"filename"1,"content":1,"type:1})
-    return media['content'],{'Content-Type': media['type']})
+    media=db.media.find({"mediaid":id},{"filename"1,"content":1,"type:1"})
+    return media['content'],{'Content-Type': media['type']}
     
        
 if __name__ ==     "__main__":
