@@ -71,8 +71,8 @@ def verify():
         req=request.get_json()
         e=req['email']
         k=req['key']
-    if db.accounts.find_one({"email":email}) is not None and key=="abracadabra":
-        db.accounts.update_one({"email":email},{'$set':{'verified':'true'}})
+    if db.accounts.find_one({"email":e}) is not None and k=="abracadabra":
+        db.accounts.update_one({"email":e},{'$set':{'verified':'true'}})
         return jsonify({"status":"OK"})
     elif db.accounts.find_one({"email":e, "key":k})is not None:
         db.accounts.update_one({"email":e, "key":k},{'$set':{'verified':'true'}})
@@ -87,14 +87,15 @@ def additem():
         return jsonify({'status': 'error', 'error':'User not logged in.'})
     else:
         con=req['content']
-       
+        db.counter.update_one({"item_id":"itemid"},{'$inc':{"seq":1}})#update counter
+        counter= db.counter.find_one({"item_id":"itemid"},{"seq":1})# get current id counter
         if req.get('media') is None:
             mid=[]
         else:
             mid=req['media']  #should be array of ids already
    
         if req.get('childType') is None:
-            new= {"item_id":counter['seq'],"timestamp":time.time(), "username":session['username'], "content":con, "retweeted":0, "property":{"likes":0}, "media":mid}
+            new= {"item_id":counter['seq'],"timestamp":time.time(), "username":session['username'], "content":con,"childType":'null', "retweeted":0, "property":{"likes":0},"parent":'null', "media":mid}
         else:
             ct=req['childType'] #if child: retweet or reply, if not child: null
             if req.get('parent') is not None: # parent optional
@@ -112,7 +113,7 @@ def item(id):
     item= db.items.find_one({"item_id":int(float(id))}) #lmao
     if item is None:
         return jsonify({'status': 'error', 'error':'Chirp not found'})
-    return jsonify({'status': 'OK', 'item':{'id':item['item_id'],'username':item['username'],'property':item['property'],'retweeted':item['retweeted'],'content':item['content'],'timestamp':item['timestamp'], 'childType': item['childtype'], 'parent':item['parent'],'media':item['media']}})
+    return jsonify({'status': 'OK', 'item':{'id':item['item_id'],'username':item['username'],'property':item['property'],'retweeted':item['retweeted'],'content':item['content'],'timestamp':item['timestamp'], 'childType': item['childType'], 'parent':item['parent'],'media':item['media']}})
 
 
 @application.route("/search", methods=['POST'])
@@ -193,11 +194,11 @@ def search():
             
             items=[]
             for chirp in chirps:
-                c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp'],'childType': item['childtype'], 'parent':item['parent'],'media':item['media']}
+                c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp'],'childType': chirp['childtype'], 'parent':chirp['parent'],'media':chirp['media']}
                 items.append(c)
             items = noReplies(re, items)
             items = onlyMedia(m, items)
-            items = rankSort(rank, items)
+            items = rankSort(r, items)
             out['items']=items
             return jsonify(out)
     elif f: # following is true but username is not
@@ -213,15 +214,15 @@ def search():
         items=[]
         for chirp in chirps:  
             if chirp['username'] in flist:
-                c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp'], 'childType': item['childtype'], 'parent':item['parent'],'media':item['media']}
+                c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp'], 'childType': chirp['childType'], 'parent':chirp['parent'],'media':chirp['media']}
 
                 items.append(c)
                 counter +=1
                 if counter >= l:
                     break # if counter is at or over limit, end loop
-        items = noReplies(re, items)
-        items = onlyMedia(m, items)
-        items = rankSort(rank, items)
+        items = searchfilter.noReplies(re, items)
+        items = searchfilter.onlyMedia(m, items)
+        items = searchfilter.rankSort(r, items)
         out['items']=items
         return jsonify(out)
 
@@ -234,12 +235,12 @@ def search():
 
         items=[]
         for chirp in chirps:
-            c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp'], 'childType': item['childtype'], 'parent':item['parent'],'media':item['media']}
+            c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp'], 'childType': chirp['childType'], 'parent':chirp['parent'],'media':chirp['media']}
             items.append(c)
             
-        items = noReplies(re, items)
-        items = onlyMedia(m, items)
-        items = rankSort(rank, items)
+        items = searchfilter.noReplies(re, items)
+        items = searchfilter.onlyMedia(m, items)
+        items = searchfilter.rankSort(r, items)
         out['items']=items
 
         return jsonify(out)
@@ -253,9 +254,9 @@ def search():
         for chirp in chirps:
             c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp']}
             items.append(c)
-        items = noReplies(re, items)
-        items = onlyMedia(m, items)
-        items = rankSort(rank, items)
+        items = searchfilter.noReplies(re, items)
+        items = searchfilter.onlyMedia(m, items)
+        items = searchfilter.rankSort(rank, items)
         out['items']=items
 
         return jsonify(out)
@@ -340,10 +341,10 @@ def likeitem(id):  # I HOPE WE DONT HAVE TO RETURN WHAT THE USER LIKES/ WHO LIKE
             f=req['like']
 
         if f:
-            db.item.update({"itemid":id},{'$inc'{"property":{"likes":1}}})
+            db.item.update({"itemid":id},{'$inc':{"property":{"likes":1}}})
             db.likes.insert({"user":session.get('username'),"itemid":counter})
         else:
-           db.item.update({"itemid":id},{'$dec'{"property":{"likes":1}}})
+           db.item.update({"itemid":id},{'$dec':{"property":{"likes":1}}})
            db.likes.remove({"user":session.get('username'),"itemid":counter},true)
     return jsonify({'status': 'OK'})  
 
@@ -361,9 +362,9 @@ def addmedia(): #says remove media if it is not accosiated with an item by a cer
  
 @application.route("/media/<id>", methods=['GET'])
 def getmedia(id):
-    media=db.media.find({"mediaid":id},{"filename"1,"content":1,"type:1"})
+    media=db.media.find({"mediaid":id},{"filename":1,"content":1,"type":1})
     return media['content'],{'Content-Type': media['type']}
     
        
 if __name__ ==     "__main__":
-    application.run(host='0.0.0.0', port = 80, threaded=True)
+    application.run(host='0.0.0.0', port = 80, threaded=True, debug=True)
