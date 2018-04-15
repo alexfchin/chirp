@@ -1,9 +1,9 @@
 from operator import itemgetter
 def rankSort(rank, items):
     if rank is "time":
-        items = sorted(items, key=itemgetter('timestamp'), reverse=True) #lambda is anon function, used in sorted method
+        items = sorted(items, key= lambda i: i['timestamp'], reverse=True) #lambda is anon function, used in sorted method
     else: #sort by interest
-        items = sorted(items, key=itemgetter('likes'), reverse=True) #not sure if nested function is right
+        items = sorted(items, key = lambda i: i['property']['likes'],reverse=True) #not sure if nested function is right
     return items
 def noReplies(re, items):
     if re is not True:
