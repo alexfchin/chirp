@@ -4,6 +4,7 @@ import keygen
 import time
 import searchfilter
 from pymongo import MongoClient
+from werkzeug.utils import secure_filename
 
 client = MongoClient()
 db = client.chirp
@@ -191,7 +192,6 @@ def search():
                 chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}}).limit(l)
             else:
                 chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u}}).limit(l) # limits amount pulled by l (L NOT 1)
-            
             items=[]
             for chirp in chirps:
                 c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp'],'childType': chirp['childtype'], 'parent':chirp['parent'],'media':chirp['media']}
@@ -256,7 +256,7 @@ def search():
             items.append(c)
         items = searchfilter.noReplies(re, items)
         items = searchfilter.onlyMedia(m, items)
-        items = searchfilter.rankSort(rank, items)
+        items = searchfilter.rankSort(r, items)
         out['items']=items
 
         return jsonify(out)
@@ -351,7 +351,7 @@ def likeitem(id):  # I HOPE WE DONT HAVE TO RETURN WHAT THE USER LIKES/ WHO LIKE
 @application.route("/addmedia", methods=['POST'])
 def addmedia(): #says remove media if it is not accosiated with an item by a certain time????
     file = request.files['content']
-    fn= secure_filename(file.filename)
+    fn= secure_filename(file.filename.encode('utf-8', 'strict'))
     mimetype = file.content_type
     #fn=request.form.get('filename')
     db.counter.update_one({"item_id":"mediaid"},{'$inc':{"seq":1}})#update counter
