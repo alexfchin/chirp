@@ -5,6 +5,14 @@ import time
 import searchfilter
 from pymongo import MongoClient
 from werkzeug.utils import secure_filename
+from werkzeug.datastructures import ImmutableMultiDict
+import io
+import base64
+from bson.binary import Binary
+import codecs
+from flask import send_file
+from signal import signal, SIGPIPE, SIG_DFL
+signal(SIGPIPE,SIG_DFL) 
 
 client = MongoClient()
 db = client.chirp
@@ -350,20 +358,31 @@ def likeitem(id):  # I HOPE WE DONT HAVE TO RETURN WHAT THE USER LIKES/ WHO LIKE
 
 @application.route("/addmedia", methods=['POST'])
 def addmedia(): #says remove media if it is not accosiated with an item by a certain time????
-    file = request.files['content'].encode('utf-8', 'strict')
+    file = request.files['content']
+    #print(file)
     fn= secure_filename(file.filename)
+    #print(fn)
     mimetype = file.content_type
+    #print(mimetype)
+    #with open(fn, "r") as fin:
+    #    f = fin.read()
+    #    encoded = Binary(f, 0)
+    f=base64.b64encode(Binary(file.read(),0))
+    #f=base64.b64encode(file.read())
+    #encoded=Binary(f,0)
     #fn=request.form.get('filename')
     db.counter.update_one({"item_id":"mediaid"},{'$inc':{"seq":1}})#update counter
     counter= db.counter.find_one({"item_id":"mediaid"},{"seq":1})# get current id counter
     
-    db.media.insert({"filename":fn , "content": file, "mediaid":counter, "type": mimetype})
-    return jsonify({"status":"OK","id":counter})
+    db.media.insert({"filename":fn , "content": f, "mediaid":counter['seq'], "type": mimetype})
+    return jsonify({"status":"OK","id":counter['seq']})
  
 @application.route("/media/<id>", methods=['GET'])
 def getmedia(id):
-    media=db.media.find({"mediaid":id},{"filename":1,"content":1,"type":1})
-    return media['content'],{'Content-Type': media['type']}
+    me=db.media.find_one({'mediaid':float(id)})
+  
+    return base64.b64decode(me['content']),{'Content-Type': me['type']}
+   # return send_file(io.BytesIO(me['content'].encode('utf-8', 'ignore')), attachment_filename=me['filename'],mimetype=me['type'])    
     
        
 if __name__ ==     "__main__":
