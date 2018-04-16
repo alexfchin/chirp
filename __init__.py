@@ -350,8 +350,8 @@ def likeitem(id):  # I HOPE WE DONT HAVE TO RETURN WHAT THE USER LIKES/ WHO LIKE
 
 @application.route("/addmedia", methods=['POST'])
 def addmedia(): #says remove media if it is not accosiated with an item by a certain time????
-    file = request.files['content']
-    fn= secure_filename(file.filename.encode('utf-8', 'strict'))
+    file = request.files['content'].encode('utf-8', 'strict')
+    fn= secure_filename(file.filename)
     mimetype = file.content_type
     #fn=request.form.get('filename')
     db.counter.update_one({"item_id":"mediaid"},{'$inc':{"seq":1}})#update counter
