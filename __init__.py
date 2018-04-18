@@ -194,32 +194,18 @@ def search():
     if u and f : # username not empty and following is true
         isfollowing = db.following.find_one({'user':session.get('username'),'follows':u})
         if isfollowing is None:
-            out['status']='OK'
-            out['items']=[]
-            out['num']=1
-            return jsonify(out) # if not following, dont return anything
+            return jsonify({'status':'OK','items':[]}) # if not following, dont return anything
         else: # return tweets by this user as usual
-
-            if p and not re:
-                out['status']='OK'
-                out['items']=[]
-                out['num']=2
-                return jsonify(out) #wants replies but no reply flag is on 
-            elif p and re:
-                if m:
-                    chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}, "media":{'$ne' : null}}).limit(l)
-                else:
-                    chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}}).limit(l)
-            elif not p and re:
-                if m:
-                    chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply', "media":{'$ne' : null}}).limit(l)
-                else:
-                    chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply'}).limit(l)
-            elif not p and not re:
-                if m:
-                    chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":{'$ne':'reply'}, "media":{'$ne' : null}}).limit(l)
-                else:
-                    chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":{'$ne':'reply'}}).limit(l)
+            if p and re and m:
+                chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}, "media":{'$ge':[]}}).limit(l)
+            elif p and re and not m:
+                chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}}).limit(l) #anything for media
+            elif not p and not re and m:
+                chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u}, "media":{'$ge':[]}}).limit(l) 
+            elif not p and not re and m: 
+                chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u}}).limit(l) 
+            else: #cases where p and not re
+                return jsonify({'status':'OK','items':[]}) 
             items=[]
             for chirp in chirps:
                 c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp'],'childType': chirp['childtype'], 'parent':chirp['parent'],'media':chirp['media']}
@@ -228,36 +214,20 @@ def search():
             out['items']=items
             return jsonify(out)
     elif f: # following is true but username is not
-        isfollowing = db.following.find({'user':session.get('username')})
-        if isfollowing is None:
-            out['status']='OK'
-            out['items']=[]
-            out['num']=3
-            return jsonify(out) # if not following, dont return anything
-        if p and not re:
-            out['status']='OK'
-            out['items']=[]
-            out['num']=4
-            return jsonify(out) #wants replies but no reply flag is on 
-        elif p and re:
-            if m:
-                chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}, "media":{'$ne' : null}}).limit(l)
-            else:
-                chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}}).limit(l)
-        elif not p and re:
-            if m:
-                chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply', "media":{'$ne' : null}}).limit(l)
-            else:
-                chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply'}).limit(l)
-        elif not p and not re:
-            if m:
-                chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":{'$ne':'reply'}, "media":{'$ne' : null}}).limit(l)
-            else:
-                chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":{'$ne':'reply'}}).limit(l)
+        if p and re and m:
+            chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}, "media":{'$ge':[]}}).limit(l)
+        elif p and re and not m:
+            chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}}).limit(l) #anything for media
+        elif not p and not re and m:
+            chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u}, "media":{'$ge':[]}}).limit(l) 
+        elif not p and not re and m: 
+            chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u}}).limit(l) 
+        else: #cases where p and not re
+            return jsonify({'status':'OK','items':[]}) 
         flist=[]
         for follow in isfollowing:
             flist.append(follow['follows'])
-        #chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query}}) #UM THIS WASNT REMOVEDDD
+        chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query}})
         counter=0
         items=[]
         for chirp in chirps:  
@@ -271,8 +241,44 @@ def search():
         items = searchfilter.rankSort(r, items)
         out['items']=items
         return jsonify(out)
+    elif u: # username is true but following is not
+        if p and re and m:
+            chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}, "media":{'$ge':[]}}).limit(l)
+        elif p and re and not m:
+            chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}}).limit(l) #anything for media
+        elif not p and not re and m:
+            chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u}, "media":{'$ge':[]}}).limit(l) 
+        elif not p and not re and m: 
+            chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u}}).limit(l) 
+        else: #cases where p and not re
+            return jsonify({'status':'OK','items':[]}) 
+        items=[]
+        for chirp in chirps:
+            c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp'], 'childType': chirp['childType'], 'parent':chirp['parent'],'media':chirp['media']}
+            items.append(c)
+        items = searchfilter.rankSort(r, items)
+        out['items']=items
 
+        return jsonify(out)
+    else: # neither username nor following is true
+        if p and re and m:
+            chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}, "media":{'$ge':[]}}).limit(l)
+        elif p and re and not m:
+            chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}}).limit(l) #anything for media
+        elif not p and not re and m:
+            chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u}, "media":{'$ge':[]}}).limit(l) 
+        elif not p and not re and m: 
+            chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u}}).limit(l) 
+        else: #cases where p and not re
+            return jsonify({'status':'OK','items':[]}) 
+        items=[]
+        for chirp in chirps:
+            c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp']}
+            items.append(c)
+        items = searchfilter.rankSort(r, items)
+        out['items']=items
 
+        return jsonify(out)
     elif u: # username is true but following is not
         if p and not re:
             out['status']='OK'
@@ -300,7 +306,6 @@ def search():
             items.append(c)
         items = searchfilter.rankSort(r, items)
         out['items']=items
-
         return jsonify(out)
     else: # neither username nor following is true
         if p and not re:
