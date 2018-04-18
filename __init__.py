@@ -14,7 +14,7 @@ from flask import send_file
 from signal import signal, SIGPIPE, SIG_DFL
 signal(SIGPIPE,SIG_DFL) 
 
-client = MongoClient()
+client = MongoClient("mongodb://admin:password@130.245.168.72/chirp")
 db = client.chirp
 
 application = Flask(__name__)
@@ -194,11 +194,17 @@ def search():
     if u and f : # username not empty and following is true
         isfollowing = db.following.find_one({'user':session.get('username'),'follows':u})
         if isfollowing is None:
-            return jsonify({'status':'OK','items':[]}) # if not following, dont return anything
+            out['status']='OK'
+            out['items']=[]
+            out['num']=1
+            return jsonify(out) # if not following, dont return anything
         else: # return tweets by this user as usual
 
             if p and not re:
-                return jsonify({'status':'OK','items':[]}) #wants replies but no reply flag is on 
+                out['status']='OK'
+                out['items']=[]
+                out['num']=2
+                return jsonify(out) #wants replies but no reply flag is on 
             elif p and re:
                 if m:
                     chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}, "media":{'$ne' : null}}).limit(l)
@@ -222,8 +228,17 @@ def search():
             out['items']=items
             return jsonify(out)
     elif f: # following is true but username is not
+        isfollowing = db.following.find({'user':session.get('username')})
+        if isfollowing is None:
+            out['status']='OK'
+            out['items']=[]
+            out['num']=3
+            return jsonify(out) # if not following, dont return anything
         if p and not re:
-            return jsonify({'status':'OK','items':[]}) #wants replies but no reply flag is on 
+            out['status']='OK'
+            out['items']=[]
+            out['num']=4
+            return jsonify(out) #wants replies but no reply flag is on 
         elif p and re:
             if m:
                 chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}, "media":{'$ne' : null}}).limit(l)
@@ -242,7 +257,7 @@ def search():
         flist=[]
         for follow in isfollowing:
             flist.append(follow['follows'])
-        chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query}})
+        #chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query}}) #UM THIS WASNT REMOVEDDD
         counter=0
         items=[]
         for chirp in chirps:  
@@ -260,7 +275,10 @@ def search():
 
     elif u: # username is true but following is not
         if p and not re:
-            return jsonify({'status':'OK','items':[]}) #wants replies but no reply flag is on 
+            out['status']='OK'
+            out['items']=[]
+            out['num']=5
+            return jsonify(out) #wants replies but no reply flag is on 
         elif p and re:
             if m:
                 chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}, "media":{'$ne' : null}}).limit(l)
@@ -286,7 +304,10 @@ def search():
         return jsonify(out)
     else: # neither username nor following is true
         if p and not re:
-            return jsonify({'status':'OK','items':[]}) #wants replies but no reply flag is on 
+            out['status']='OK'
+            out['items']=[]
+            out['num']=6
+            return jsonify(out) #wants replies but no reply flag is on 
         elif p and re:
             if m:
                 chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}, "media":{'$ne' : null}}).limit(l)
