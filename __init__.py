@@ -16,7 +16,7 @@ signal(SIGPIPE,SIG_DFL)
 from werkzeug.contrib.cache import MemcachedCache
 import memcache
 cache = memcache.Client(['130.245.168.39:11211'])
-client = MongoClient("mongodb://admin:password@130.245.168.72/chirp")
+client = MongoClient("mongodb://130.245.171.44:27017/chirp")
 db = client.chirp
 
 application = Flask(__name__)
@@ -116,7 +116,7 @@ def additem():
                 new= {"item_id":counter['seq'],"timestamp":date, "username":session['username'], "content":con, "childType":ct,"retweeted":0, "property":{"likes":0},"parent":p,"media":mid}
                 if ct == "retweet": #increase parent retweet counter if retweeted
                     db.items.update_one({"item_id":p},{'$inc': {"retweeted":1}})# increment retweet count of parent by one         
-    cache.set('item'+str(counter['seq']), item)
+    cache.set('item'+str(counter['seq']), item, 120)
     db.items.insert(new)
     #any other error situations?
     return jsonify({'status': 'OK', 'id':str(counter['seq'])})  
@@ -127,7 +127,7 @@ def item(id):
     item= cache.get('item'+str(int(float(id))))
     if item is None:
         item= db.items.find_one({"item_id":int(float(id))}) #lmao
-        cache.set('item'+str(int(float(id))),item)
+        cache.set('item'+str(int(float(id))),item, 120)
     if item is None:
         return jsonify({'status': 'error', 'error':'Chirp not found'})
     return jsonify({'status': 'OK', 'item':{'id':item['item_id'],'username':item['username'],'property':item['property'],'retweeted':item['retweeted'],'content':item['content'],'timestamp':item['timestamp'], 'childType': item['childType'], 'parent':item['parent'],'media':item['media']}})
@@ -474,7 +474,7 @@ def addmedia(): #says remove media if it is not accosiated with an item by a cer
     date=datetime.datetime.now()
     new={"createdAt":date,"used":"n","filename":fn , "content": f, "mediaid":counter['seq'], "type": mimetype}
     db.media.insert(new)
-    cache.set('media'+str(float(counter['seq'])), new)
+    cache.set('media'+str(float(counter['seq'])), new, 120)
     return jsonify({"status":"OK","id":counter['seq']})
  
 @application.route("/media/<id>", methods=['GET'])
@@ -482,9 +482,17 @@ def getmedia(id):
     me= cache.get('media'+str(float(id)))
     if me is None:
         me=db.media.find_one({'mediaid':float(id)})
-        cache.set('media'+str(float(id)), me)
+        cache.set('media'+str(float(id)), me, 120)
     out= base64.b64decode(me['content']),{'Content-Type': me['type']}
     return out
 
+@application.route("/checkcache", methods=['GET'])
+def getdate():
+    date= cache.get("date")
+    if date is None:
+        date=datetime.datetime.now()
+        cache.set("date",date, 60)
+    return "time is : " +str(date)
+
 if __name__ ==     "__main__":
-    application.run(host='0.0.0.0', port = 80, threaded=True, debug=True)
+    application.run(host='0.0.0.0', port = 5000, threaded=True, debug=True)
