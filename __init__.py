@@ -13,7 +13,9 @@ import codecs
 from flask import send_file
 from signal import signal, SIGPIPE, SIG_DFL
 signal(SIGPIPE,SIG_DFL) 
-
+from werkzeug.contrib.cache import MemcachedCache
+import memcache
+cache = memcache.Client(['130.245.168.39:11211'])
 client = MongoClient("mongodb://admin:password@130.245.168.72/chirp")
 db = client.chirp
 
@@ -114,6 +116,7 @@ def additem():
                 new= {"item_id":counter['seq'],"timestamp":date, "username":session['username'], "content":con, "childType":ct,"retweeted":0, "property":{"likes":0},"parent":p,"media":mid}
                 if ct == "retweet": #increase parent retweet counter if retweeted
                     db.items.update_one({"item_id":p},{'$inc': {"retweeted":1}})# increment retweet count of parent by one         
+    cache.set('item'+str(counter['seq']), item)
     db.items.insert(new)
     #any other error situations?
     return jsonify({'status': 'OK', 'id':str(counter['seq'])})  
@@ -121,7 +124,10 @@ def additem():
 @application.route("/item/<id>", methods=['GET'])
 def item(id):
     #id=request.args.get('id') 
-    item= db.items.find_one({"item_id":int(float(id))}) #lmao
+    item= cache.get('item'+str(int(float(id))))
+    if item is None:
+        item= db.items.find_one({"item_id":int(float(id))}) #lmao
+        cache.set('item'+str(int(float(id))),item)
     if item is None:
         return jsonify({'status': 'error', 'error':'Chirp not found'})
     return jsonify({'status': 'OK', 'item':{'id':item['item_id'],'username':item['username'],'property':item['property'],'retweeted':item['retweeted'],'content':item['content'],'timestamp':item['timestamp'], 'childType': item['childType'], 'parent':item['parent'],'media':item['media']}})
@@ -191,6 +197,7 @@ def search():
     out['parent']=p
     out['replies']=re
     out['media']=m
+
     if u and f : # username not empty and following is true
         isfollowing = db.following.find_one({'user':session.get('username'),'follows':u})
         if isfollowing is None:
@@ -373,6 +380,7 @@ def delitem(id):
     for m in media:
         db.media.remove({"mediaid":m},true)
     db.items.remove({"item_id":int(float(id))}, true)
+    cache.delete('item'+str(int(float(id))))
 @application.route("/user/<username>", methods=['GET'])
 def profile(username):
     acc=db.accounts.find_one({'username':username},{'email':1})
@@ -407,6 +415,7 @@ def following(username):
             return jsonify({'status':'error','error':'Please input a valid limit 0<limit<200'})
   
     following = db.following.find({'user':username},{'follows':1}).limit(l)
+
     fs=[]
     for follow in following:
         fs.append(following['user'])
@@ -426,6 +435,7 @@ def follow():
         if f:
             new={'user': session.get('username'), 'follows':follow}
             db.following.insert(new)
+            
         else:
             db.following.remove({'user':session.get('username'),'follows':follow}, true)
     return jsonify({'status': 'OK'})  
@@ -436,6 +446,7 @@ def likeitem(id):  # I HOPE WE DONT HAVE TO RETURN WHAT THE USER LIKES/ WHO LIKE
     if session.get('username') is None:
         return jsonify({'status': 'error', 'error':'User not logged in.'})
     else:
+        id=int(float(id))
         item=req['id']
         if req.get('like') is None:
             f=True
@@ -445,39 +456,35 @@ def likeitem(id):  # I HOPE WE DONT HAVE TO RETURN WHAT THE USER LIKES/ WHO LIKE
         if f:
             db.item.update({"itemid":id},{'$inc':{"property":{"likes":1}}})
             db.likes.insert({"user":session.get('username'),"itemid":counter})
+            cache.delete('item'+str(int(float(id))))
         else:
            db.item.update({"itemid":id},{'$dec':{"property":{"likes":1}}})
            db.likes.remove({"user":session.get('username'),"itemid":counter},true)
+           cache.delete('item'+str(int(float(id))))
     return jsonify({'status': 'OK'})  
 
 @application.route("/addmedia", methods=['POST'])
 def addmedia(): #says remove media if it is not accosiated with an item by a certain time????
     file = request.files['content']
-    #print(file)
     fn= secure_filename(file.filename)
-    #print(fn)
     mimetype = file.content_type
-    #print(mimetype)
-    #with open(fn, "r") as fin:
-    #    f = fin.read()
-    #    encoded = Binary(f, 0)
     f=base64.b64encode(Binary(file.read(),0))
-    #f=base64.b64encode(file.read())
-    #encoded=Binary(f,0)
-    #fn=request.form.get('filename')
     db.counter.update_one({"item_id":"mediaid"},{'$inc':{"seq":1}})#update counter
     counter= db.counter.find_one({"item_id":"mediaid"},{"seq":1})# get current id counter
     date=datetime.datetime.now()
-    db.media.insert({"createdAt":date,"used":"n","filename":fn , "content": f, "mediaid":counter['seq'], "type": mimetype})
+    new={"createdAt":date,"used":"n","filename":fn , "content": f, "mediaid":counter['seq'], "type": mimetype}
+    db.media.insert(new)
+    cache.set('media'+str(float(counter['seq'])), new)
     return jsonify({"status":"OK","id":counter['seq']})
  
 @application.route("/media/<id>", methods=['GET'])
 def getmedia(id):
-    me=db.media.find_one({'mediaid':float(id)})
-  
-    return base64.b64decode(me['content']),{'Content-Type': me['type']}
-   # return send_file(io.BytesIO(me['content'].encode('utf-8', 'ignore')), attachment_filename=me['filename'],mimetype=me['type'])    
-    
-       
+    me= cache.get('media'+str(float(id)))
+    if me is None:
+        me=db.media.find_one({'mediaid':float(id)})
+        cache.set('media'+str(float(id)), me)
+    out= base64.b64decode(me['content']),{'Content-Type': me['type']}
+    return out
+
 if __name__ ==     "__main__":
     application.run(host='0.0.0.0', port = 80, threaded=True, debug=True)
