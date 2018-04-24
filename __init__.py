@@ -1,3 +1,4 @@
+
 from flask import Flask, session, redirect, url_for, escape, request, render_template,jsonify
 import sendmail
 import keygen
@@ -16,13 +17,13 @@ signal(SIGPIPE,SIG_DFL)
 from werkzeug.contrib.cache import MemcachedCache
 import memcache
 cache = memcache.Client(['130.245.168.39:11211'])
-client = MongoClient("mongodb://130.245.171.44:27017/chirp")
+client = MongoClient("mongodb://130.245.171.44/chirp")
 db = client.chirp
+
+
 
 application = Flask(__name__)
 application.secret_key = 'sUper sEcuRe t0tally RAndom keY '
-
-
 
 @application.route("/")
 def index():
@@ -32,6 +33,7 @@ def index():
 def adduser():
     req=request.get_json()
     e= req['email']
+
     if db.accounts.find_one({"email":e}) is not None :
         #unique email
         return jsonify({'status': 'error', 'error':'Email Address already in use'})
@@ -82,11 +84,12 @@ def verify():
         req=request.get_json()
         e=req['email']
         k=req['key']
-    if db.accounts.find_one({"email":e}) is not None and k=="abracadabra":
-        db.accounts.update_one({"email":e},{'$set':{'verified':'true'}})
+    userID = db.accounts.find_one({"email":e})
+    if userID is not None and k=="abracadabra":
+        db.accounts.update_one({"_id":userID['_id']},{'$set':{'verified':'true'}})
         return jsonify({"status":"OK"})
-    elif db.accounts.find_one({"email":e, "key":k})is not None:
-        db.accounts.update_one({"email":e, "key":k},{'$set':{'verified':'true'}})
+    elif userID is not None:
+        db.accounts.update_one({"_id":userID['_id'], "key":k},{'$set':{'verified':'true'}})
         return jsonify({'status': 'OK'})
     else:
         return jsonify({'status': 'error', 'error':'Email/Key combination could not be verified'})
@@ -99,8 +102,9 @@ def additem():
     else:
         date=datetime.datetime.now()
         con=req['content']
-        db.counter.update_one({"item_id":"itemid"},{'$inc':{"seq":1}})#update counter
+
         counter= db.counter.find_one({"item_id":"itemid"},{"seq":1})# get current id counter
+        db.counter.update_one({"item_id":"itemid"},{'$inc':{"seq":1}})#update counter
         if req.get('media') is None:
             mid=[]
         else:
@@ -116,7 +120,7 @@ def additem():
                 new= {"item_id":counter['seq'],"timestamp":date, "username":session['username'], "content":con, "childType":ct,"retweeted":0, "property":{"likes":0},"parent":p,"media":mid}
                 if ct == "retweet": #increase parent retweet counter if retweeted
                     db.items.update_one({"item_id":p},{'$inc': {"retweeted":1}})# increment retweet count of parent by one         
-    cache.set('item'+str(counter['seq']), item, 120)
+    cache.set('item'+str(counter['seq']), item)
     db.items.insert(new)
     #any other error situations?
     return jsonify({'status': 'OK', 'id':str(counter['seq'])})  
@@ -127,7 +131,7 @@ def item(id):
     item= cache.get('item'+str(int(float(id))))
     if item is None:
         item= db.items.find_one({"item_id":int(float(id))}) #lmao
-        cache.set('item'+str(int(float(id))),item, 120)
+        cache.set('item'+str(int(float(id))),item)
     if item is None:
         return jsonify({'status': 'error', 'error':'Chirp not found'})
     return jsonify({'status': 'OK', 'item':{'id':item['item_id'],'username':item['username'],'property':item['property'],'retweeted':item['retweeted'],'content':item['content'],'timestamp':item['timestamp'], 'childType': item['childType'], 'parent':item['parent'],'media':item['media']}})
@@ -280,98 +284,6 @@ def search():
 
         return jsonify(out)
 
-    # if u and f : # username not empty and following is true
-    #     isfollowing = db.following.find_one({'user':session.get('username'),'follows':u})
-    #     if isfollowing is None:
-    #         return jsonify({'status':'OK','items':[]}) # if not following, dont return anything
-    #     else: # return tweets by this user as usual
-    #         if p and re and m:
-    #             chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}, "media":{'$ge':[]}}).limit(l)
-    #         elif p and re and not m:
-    #             chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}}).limit(l) #anything for media
-    #         elif not p and not re and m:
-    #             chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u}, "media":{'$ge':[]}}).limit(l) 
-    #         else:
-    #             chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u}}).limit(l) 
-    #         items=[]
-    #         for chirp in chirps:
-    #             c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp'],'childType': chirp['childtype'], 'parent':chirp['parent'],'media':chirp['media']}
-    #             items.append(c)
-    #         items = rankSort(r, items)
-    #         out['items']=items
-    #         return jsonify(out)
-    # elif f: # following is true but username is not
-    #     if p:
-    #         isfollowing =db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}}).limit(l)
-    #     else:
-    #         isfollowing = db.following.find({'user':session.get('username')})
-    #     flist=[]
-    #     for follow in isfollowing:
-    #         flist.append(follow['follows'])
-
-    #     if p and re and m:
-    #         chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}, "media":{'$ge':[]}}).limit(l)
-    #     elif p and re and not m:
-    #         chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}}).limit(l) #anything for media
-    #     elif not p and not re and m:
-    #         chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u}, "media":{'$ge':[]}}).limit(l) 
-    #     else:
-    #         chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u}}).limit(l) 
-    #     counter=0
-    #     items=[]
-    #     for chirp in chirps:  
-    #         if chirp['username'] in flist:
-    #             c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp'], 'childType': chirp['childType'], 'parent':chirp['parent'],'media':chirp['media']}
-
-    #             items.append(c)
-    #             counter +=1
-    #             if counter >= l:
-    #                 break # if counter is at or over limit, end loop
-    #      chirps.close()
-    #     items = searchfilter.rankSort(r, items)
-    #     out['items']=items
-    #     return jsonify(out)
-
-
-    # elif u: # username is true but following is not
-    #     if p and re and m:
-    #         chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}, "media":{'$ge':[]}}).limit(l)
-    #     elif p and re and not m:
-    #         chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}}).limit(l) #anything for media
-    #     elif not p and not re and m:
-    #         chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u}, "media":{'$ge':[]}}).limit(l) 
-    #     else:
-    #         chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u}}).limit(l) 
-
-    #     items=[]
-    #     for chirp in chirps:
-    #         c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp'], 'childType': chirp['childType'], 'parent':chirp['parent'],'media':chirp['media']}
-    #         items.append(c)
-    #      chirps.close()
-    #     items = searchfilter.rankSort(r, items)
-    #     out['items']=items
-    #     return jsonify(out)
-    # else: # neither username nor following is true
-    #     if p and re and m:
-    #         chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}, "media":{'$ge':[]}}).limit(l)
-    #     elif p and re and not m:
-    #         chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u},"childType":'reply',"parent":{'$regex':p}}).limit(l) #anything for media
-    #     elif not p and not re and m:
-    #         chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u}, "media":{'$ge':[]}}).limit(l) 
-    #     else:
-    #         chirps=db.items.find({"timestamp":{'$lte':ts},"content":{'$regex':query},"username":{'$regex':u}}).limit(l) 
-
-    #     items=[]
-    #     for chirp in chirps:
-    #         c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp']}
-    #         items.append(c)
-    #     chirps.close()
-    #     items = searchfilter.rankSort(r, items)
-    #     out['items']=items
-
-    #     return jsonify(out)
-
-
 @application.route("/item/<id>", methods=['DELETE'])
 def delitem(id):
     #i dont think we have to return anything
@@ -454,11 +366,11 @@ def likeitem(id):  # I HOPE WE DONT HAVE TO RETURN WHAT THE USER LIKES/ WHO LIKE
             f=req['like']
 
         if f:
-            db.item.update({"itemid":id},{'$inc':{"property":{"likes":1}}})
+            db.items.update({"itemid":id},{'$inc':{"property":{"likes":1}}})
             db.likes.insert({"user":session.get('username'),"itemid":counter})
             cache.delete('item'+str(int(float(id))))
         else:
-           db.item.update({"itemid":id},{'$dec':{"property":{"likes":1}}})
+           db.items.update({"itemid":id},{'$dec':{"property":{"likes":1}}})
            db.likes.remove({"user":session.get('username'),"itemid":counter},true)
            cache.delete('item'+str(int(float(id))))
     return jsonify({'status': 'OK'})  
@@ -469,12 +381,13 @@ def addmedia(): #says remove media if it is not accosiated with an item by a cer
     fn= secure_filename(file.filename)
     mimetype = file.content_type
     f=base64.b64encode(Binary(file.read(),0))
+
     db.counter.update_one({"item_id":"mediaid"},{'$inc':{"seq":1}})#update counter
     counter= db.counter.find_one({"item_id":"mediaid"},{"seq":1})# get current id counter
     date=datetime.datetime.now()
     new={"createdAt":date,"used":"n","filename":fn , "content": f, "mediaid":counter['seq'], "type": mimetype}
     db.media.insert(new)
-    cache.set('media'+str(float(counter['seq'])), new, 120)
+    cache.set('media'+str(float(counter['seq'])), new)
     return jsonify({"status":"OK","id":counter['seq']})
  
 @application.route("/media/<id>", methods=['GET'])
@@ -482,17 +395,16 @@ def getmedia(id):
     me= cache.get('media'+str(float(id)))
     if me is None:
         me=db.media.find_one({'mediaid':float(id)})
-        cache.set('media'+str(float(id)), me, 120)
+        cache.set('media'+str(float(id)), me)
     out= base64.b64decode(me['content']),{'Content-Type': me['type']}
     return out
 
-@application.route("/checkcache", methods=['GET'])
-def getdate():
-    date= cache.get("date")
-    if date is None:
-        date=datetime.datetime.now()
-        cache.set("date",date, 60)
-    return "time is : " +str(date)
+@application.route("/test", methods=['POST'])
+def test():
+    db.counter.update_one({"item_id":"mediaid"},{'$inc':{"seq":1}})#update counter
+    return jsonify({'status': 'OK'})  
+
+
 
 if __name__ ==     "__main__":
     application.run(host='0.0.0.0', port = 5000, threaded=True, debug=True)
