@@ -365,12 +365,12 @@ def likeitem(id):  # I HOPE WE DONT HAVE TO RETURN WHAT THE USER LIKES/ WHO LIKE
             f=req['like']
 
         if f:
-            db.items.update({"itemid":id},{'$inc':{"property":{"likes":1}}})
-            db.likes.insert({"user":session.get('username'),"itemid":counter})
+            db.items.update({"item_id":id},{'$inc':{"property":{"likes":1}}})
+            db.likes.insert({"user":session.get('username'),"item_id":counter})
             cache.delete('item'+str(int(float(id))))
         else:
-           db.items.update({"itemid":id},{'$dec':{"property":{"likes":1}}})
-           db.likes.remove({"user":session.get('username'),"itemid":counter},true)
+           db.items.update({"item_id":id},{'$dec':{"property":{"likes":1}}})
+           db.likes.remove({"user":session.get('username'),"item_id":counter},true)
            cache.delete('item'+str(int(float(id))))
     return jsonify({'status': 'OK'})  
 
