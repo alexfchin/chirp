@@ -363,16 +363,15 @@ def likeitem(id):  # I HOPE WE DONT HAVE TO RETURN WHAT THE USER LIKES/ WHO LIKE
             f=True
         else:
             f=req['like']
-
         if f:
-            db.items.update({"item_id":id},{'$inc':{"property":{"likes":1}}})
-            db.likes.insert({"user":session.get('username'),"item_id":counter})
+            db.items.update({"item_id":id},{'$inc':{"property.likes":1}})
+            #db.likes.insert({"user":session.get('username'),"item_id":counter})
             cache.delete('item'+str(int(float(id))))
         else:
-           db.items.update({"item_id":id},{'$dec':{"property":{"likes":1}}})
-           db.likes.remove({"user":session.get('username'),"item_id":counter},true)
-           cache.delete('item'+str(int(float(id))))
-    return jsonify({'status': 'OK'})  
+            db.items.update({"item_id":id},{'$dec':{"property.likes":1}})
+            #db.likes.remove({"user":session.get('username'),"item_id":counter},true)
+            cache.delete('item'+str(int(float(id))))
+        return jsonify({'status': 'OK'})  
 
 @application.route("/addmedia", methods=['POST'])
 def addmedia(): #says remove media if it is not accosiated with an item by a certain time????
