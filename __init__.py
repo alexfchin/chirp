@@ -359,7 +359,6 @@ def likeitem(id):  # I HOPE WE DONT HAVE TO RETURN WHAT THE USER LIKES/ WHO LIKE
         return jsonify({'status': 'error', 'error':'User not logged in.'})
     else:
         id=int(float(id))
-        item=req['id']
         if req.get('like') is None:
             f=True
         else:
@@ -399,10 +398,13 @@ def getmedia(id):
     out= base64.b64decode(me['content']),{'Content-Type': me['type']}
     return out
 
-@application.route("/test", methods=['POST'])
-def test():
-    db.counter.update_one({"item_id":"mediaid"},{'$inc':{"seq":1}})#update counter
-    return jsonify({'status': 'OK'})  
+@application.route("/checkcache", methods=['GET'])
+def getdate():
+    date= cache.get("date")
+    if date is None:
+        date=datetime.datetime.now()
+        cache.set("date",date, 60)
+    return "time is : " +str(date)
 
 
 
