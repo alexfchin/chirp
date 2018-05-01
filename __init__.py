@@ -1,4 +1,3 @@
-
 from flask import Flask, session, redirect, url_for, escape, request, render_template,jsonify
 import sendmail
 import keygen
@@ -34,11 +33,11 @@ def adduser():
     req=request.get_json()
     e= req['email']
 
-    if db.accounts.find_one({"email":e}) is not None :
+    if db.accounts.find({"email":e}).count() > 0:
         #unique email
         return jsonify({'status': 'error', 'error':'Email Address already in use'})
     u= req['username']
-    if db.accounts.find_one({"username":u}) is not None :
+    if db.accounts.find({"username":u}).count() > 0 :
         #unique username
         return jsonify({'status': 'error', 'error':'Username already in use'}) 
     p= req['password']
@@ -57,7 +56,7 @@ def login():
         return jsonify({'status': 'error', 'error':'User '+session['username']+' is already logged in.'})
     u= req['username']
     p= req['password']
-    if db.accounts.find_one({"username": u, "password": p, "verified":"true"}) is not None:
+    if db.accounts.find({"username": u, "password": p, "verified":"true"}).count() > 0:
         out=jsonify({"status":"OK"})
         session['username']=u
         #since instructions specifically say "set session cookie" i'll leave this part commented in case it's needed in the future
@@ -102,9 +101,12 @@ def additem():
     else:
         date=datetime.datetime.now()
         con=req['content']
-
-        counter= db.counter.find_one({"item_id":"itemid"},{"seq":1})# get current id counter
+        counter= cache.get('itemctr')
+        if counter is None:
+            dbcounter= db.counter.find_one({"item_id":"itemid"},{"seq":1})# get current id counter
+            counter= int(dbcounter['seq'])
         db.counter.update_one({"item_id":"itemid"},{'$inc':{"seq":1}})#update counter
+        cache.set('itemctr',counter+1)
         if req.get('media') is None:
             mid=[]
         else:
@@ -112,26 +114,26 @@ def additem():
         for m in mid:
             db.media.update_one({"mediaid":m},{'$set':{"used":"y"}})
         if req.get('childType') is None:
-            new= {"item_id":counter['seq'],"timestamp":date, "username":session['username'], "content":con,"childType":'null', "retweeted":0, "property":{"likes":0},"parent":'null', "media":mid}
+            new= {"item_id":counter,"timestamp":date, "username":session['username'], "content":con,"childType":'null', "retweeted":0, "property":{"likes":0},"parent":'null', "media":mid}
         else:
             ct=req['childType'] #if child: retweet or reply, if not child: null
             if req.get('parent') is not None: # parent optional
                 p=req['parent'] # item id of the original item being responded to
-                new= {"item_id":counter['seq'],"timestamp":date, "username":session['username'], "content":con, "childType":ct,"retweeted":0, "property":{"likes":0},"parent":p,"media":mid}
+                new= {"item_id":counter,"timestamp":date, "username":session['username'], "content":con, "childType":ct,"retweeted":0, "property":{"likes":0},"parent":p,"media":mid}
                 if ct == "retweet": #increase parent retweet counter if retweeted
                     db.items.update_one({"item_id":p},{'$inc': {"retweeted":1}})# increment retweet count of parent by one         
     cache.set('item'+str(counter['seq']), item)
     db.items.insert(new)
     #any other error situations?
-    return jsonify({'status': 'OK', 'id':str(counter['seq'])})  
+    return jsonify({'status': 'OK', 'id':str(counter)})  
 
 @application.route("/item/<id>", methods=['GET'])
 def item(id):
-    #id=request.args.get('id') 
-    item= cache.get('item'+str(int(float(id))))
+    id= int(id)
+    item= cache.get('item'+str(id)) #might need to do str(int(float(id
     if item is None:
-        item= db.items.find_one({"item_id":int(float(id))}) #lmao
-        cache.set('item'+str(int(float(id))),item)
+        item= db.items.find_one({"item_id":id}) #lmao
+        cache.set('item'+str(id),item)
     if item is None:
         return jsonify({'status': 'error', 'error':'Chirp not found'})
     return jsonify({'status': 'OK', 'item':{'id':item['item_id'],'username':item['username'],'property':item['property'],'retweeted':item['retweeted'],'content':item['content'],'timestamp':item['timestamp'], 'childType': item['childType'], 'parent':item['parent'],'media':item['media']}})
@@ -379,21 +381,25 @@ def addmedia(): #says remove media if it is not accosiated with an item by a cer
     fn= secure_filename(file.filename)
     mimetype = file.content_type
     f=base64.b64encode(Binary(file.read(),0))
-
+    counter= cache.get('mediactr')
+    if counter is None:
+        dbcounter= db.counter.find_one({"item_id":"mediaid"},{"seq":1})# get current id counter
+        counter=int(dbcounter['seq'])
     db.counter.update_one({"item_id":"mediaid"},{'$inc':{"seq":1}})#update counter
-    counter= db.counter.find_one({"item_id":"mediaid"},{"seq":1})# get current id counter
+    cache.set('mediactr',counter+1)   
     date=datetime.datetime.now()
-    new={"createdAt":date,"used":"n","filename":fn , "content": f, "mediaid":counter['seq'], "type": mimetype}
+    new={"createdAt":date,"used":"n","filename":fn , "content": f, "mediaid":counter, "type": mimetype}
     db.media.insert(new)
-    cache.set('media'+str(float(counter['seq'])), new)
-    return jsonify({"status":"OK","id":counter['seq']})
+    cache.set('media'+str(counter), new)
+    return jsonify({"status":"OK","id":counter})
  
 @application.route("/media/<id>", methods=['GET'])
 def getmedia(id):
-    me= cache.get('media'+str(float(id)))
+    id= int(id)
+    me= cache.get('media'+str(id))
     if me is None:
-        me=db.media.find_one({'mediaid':float(id)})
-        cache.set('media'+str(float(id)), me)
+        me=db.media.find_one({'mediaid':id})
+        cache.set('media'+str(id), me)
     out= base64.b64decode(me['content']),{'Content-Type': me['type']}
     return out
 
