@@ -87,7 +87,7 @@ def verify():
     if userID is not None and k=="abracadabra":
         db.accounts.update_one({"_id":userID['_id']},{'$set':{'verified':'true'}})
         return jsonify({"status":"OK"})
-    elif userID is not None:
+    elif userID is not None and k==userID['key']:
         db.accounts.update_one({"_id":userID['_id'], "key":k},{'$set':{'verified':'true'}})
         return jsonify({'status': 'OK'})
     else:
@@ -122,7 +122,7 @@ def additem():
                 new= {"item_id":counter,"timestamp":date, "username":session['username'], "content":con, "childType":ct,"retweeted":0, "property":{"likes":0},"parent":p,"media":mid}
                 if ct == "retweet": #increase parent retweet counter if retweeted
                     db.items.update_one({"item_id":p},{'$inc': {"retweeted":1}})# increment retweet count of parent by one         
-    cache.set('item'+str(counter['seq']), item)
+    cache.set('item'+str(counter), new)    
     db.items.insert(new)
     #any other error situations?
     return jsonify({'status': 'OK', 'id':str(counter)})  
@@ -136,7 +136,7 @@ def item(id):
         cache.set('item'+str(id),item)
     if item is None:
         return jsonify({'status': 'error', 'error':'Chirp not found'})
-    return jsonify({'status': 'OK', 'item':{'id':item['item_id'],'username':item['username'],'property':item['property'],'retweeted':item['retweeted'],'content':item['content'],'timestamp':item['timestamp'], 'childType': item['childType'], 'parent':item['parent'],'media':item['media']}})
+    return jsonify({'status': 'OK', 'item':{'id':str(item['item_id']),'username':item['username'],'property':item['property'],'retweeted':item['retweeted'],'content':item['content'],'timestamp':item['timestamp'], 'childType': item['childType'], 'parent':item['parent'],'media':item['media']}})
 
 
 @application.route("/search", methods=['POST'])
