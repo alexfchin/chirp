@@ -218,9 +218,9 @@ def search():
                 c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp'],'childType': chirp['childtype'], 'parent':chirp['parent'],'media':chirp['media']}
                 items.append(c)
             chirps.close()
-            items = noReplies(re, items)
-            items = onlyMedia(m, items)
-            items = rankSort(r, items)
+            # items = noReplies(re, items)
+            # items = onlyMedia(m, items)
+            # items = rankSort(r, items)
             out['items']=items
             return jsonify(out)
     elif f: # following is true but username is not
@@ -244,9 +244,9 @@ def search():
                 if counter >= l:
                     break # if counter is at or over limit, end loop
         chirps.close()
-        items = searchfilter.noReplies(re, items)
-        items = searchfilter.onlyMedia(m, items)
-        items = searchfilter.rankSort(r, items)
+        		#items = searchfilter.noReplies(re, items)
+       # items = searchfilter.onlyMedia(m, items)
+        #items = searchfilter.rankSort(r, items)
         out['items']=items
         return jsonify(out)
 
@@ -262,9 +262,9 @@ def search():
             c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp'], 'childType': chirp['childType'], 'parent':chirp['parent'],'media':chirp['media']}
             items.append(c)
         chirps.close()   
-        items = searchfilter.noReplies(re, items)
-        items = searchfilter.onlyMedia(m, items)
-        items = searchfilter.rankSort(r, items)
+        		#items = searchfilter.noReplies(re, items)
+       # items = searchfilter.onlyMedia(m, items)
+        #items = searchfilter.rankSort(r, items)
         out['items']=items
 
         return jsonify(out)
@@ -279,9 +279,9 @@ def search():
             c= {'id':chirp['item_id'],'username':chirp['username'],'property':chirp['property'],'retweeted':chirp['retweeted'],'content':chirp['content'],'timestamp':chirp['timestamp']}
             items.append(c)
         chirps.close()
-        items = searchfilter.noReplies(re, items)
-        items = searchfilter.onlyMedia(m, items)
-        items = searchfilter.rankSort(r, items)
+        		#items = searchfilter.noReplies(re, items)
+       # items = searchfilter.onlyMedia(m, items)
+        #items = searchfilter.rankSort(r, items)
         out['items']=items
 
         return jsonify(out)
